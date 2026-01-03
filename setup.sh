@@ -33,7 +33,7 @@ echo
 echo "Ne yapmak istersiniz?"
 echo "1) Mevcut DHCP IP'sini sabit IP yap (önerilen - kolay)"
 echo "2) Manuel IP gir"
-read -p "Seçiminiz (1 veya 2): " choice
+read -p "Seçiminiz (1 veya 2): " choice < /dev/tty
 
 case $choice in
     1)
@@ -42,9 +42,9 @@ case $choice in
         DNS=$(grep nameserver /etc/resolv.conf | awk '{print $2}' | head -n1)
         ;;
     2)
-        read -p "Sabit IP adresi (örn: 192.168.1.100): " STATIC_IP
-        read -p "Gateway (örn: 192.168.1.1): " GATEWAY
-        read -p "DNS sunucu (örn: 8.8.8.8): " DNS
+        read -p "Sabit IP adresi (örn: 192.168.1.100): " STATIC_IP < /dev/tty
+        read -p "Gateway (örn: 192.168.1.1): " GATEWAY < /dev/tty
+        read -p "DNS sunucu (örn: 8.8.8.8): " DNS < /dev/tty
         ;;
     *)
         echo "Geçersiz seçim!"
@@ -63,7 +63,7 @@ echo "  DNS: $DNS"
 echo "  Netmask: $NETMASK"
 echo
 
-read -p "Devam edilsin mi? (e/h): " confirm
+read -p "Devam edilsin mi? (e/h): " confirm < /dev/tty
 if [ "$confirm" != "e" ]; then
     echo "İptal edildi."
     exit 0
