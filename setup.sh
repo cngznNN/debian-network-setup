@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Debian/Ubuntu Server Ağ Otomatik Yapılandırma
-# Kullanım: curl -sSL https://raw.githubusercontent.com/KULLANICI_ADIN/network-setup/main/setup.sh | sudo bash
+# Kullanım: curl -sSL https://raw.githubusercontent.com/cngznNN/debian-network-setup/main/setup.sh | sudo bash
 #
 # Root yetkisi kontrolü
 if [ "$EUID" -ne 0 ]; then 
