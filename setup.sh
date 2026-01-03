@@ -1,13 +1,24 @@
 #!/bin/bash
 #
 # Debian/Ubuntu Server Ağ Otomatik Yapılandırma
-# Kullanım: curl -sSL https://raw.githubusercontent.com/cngznNN/debian-network-setup/main/setup.sh | sudo bash
+# 
+# Kullanım 1 (otomatik - mevcut IP'yi sabit yap):
+#   curl -sSL https://raw.githubusercontent.com/cngznNN/debian-network-setup/main/setup.sh | sudo bash -s auto
 #
+# Kullanım 2 (interaktif):
+#   curl -sSL https://raw.githubusercontent.com/cngznNN/debian-network-setup/main/setup.sh | sudo bash -s interactive
+#
+# Kullanım 3 (manuel IP):
+#   curl -sSL https://raw.githubusercontent.com/cngznNN/debian-network-setup/main/setup.sh | sudo bash -s manual 192.168.1.100 192.168.1.1 8.8.8.8
+#
+
 # Root yetkisi kontrolü
 if [ "$EUID" -ne 0 ]; then 
     echo "Bu scripti root olarak çalıştırmalısınız: sudo bash $0"
     exit 1
 fi
+
+MODE="${1:-interactive}"
 
 echo "=== Debian Ağ Yapılandırma Scripti ==="
 echo
@@ -29,25 +40,54 @@ echo "  Gateway: $(ip route | grep default | awk '{print $3}')"
 echo "  DNS: $(grep nameserver /etc/resolv.conf | awk '{print $2}' | head -n1)"
 echo
 
-# Kullanıcıya seçenek sun
-echo "Ne yapmak istersiniz?"
-echo "1) Mevcut DHCP IP'sini sabit IP yap (önerilen - kolay)"
-echo "2) Manuel IP gir"
-read -p "Seçiminiz (1 veya 2): " choice < /dev/tty
-
-case $choice in
-    1)
+# Mod seçimi
+case $MODE in
+    auto)
+        echo "MOD: Otomatik - Mevcut DHCP IP'si sabitlenecek"
         STATIC_IP=$CURRENT_IP
         GATEWAY=$(ip route | grep default | awk '{print $3}')
         DNS=$(grep nameserver /etc/resolv.conf | awk '{print $2}' | head -n1)
         ;;
-    2)
-        read -p "Sabit IP adresi (örn: 192.168.1.100): " STATIC_IP < /dev/tty
-        read -p "Gateway (örn: 192.168.1.1): " GATEWAY < /dev/tty
-        read -p "DNS sunucu (örn: 8.8.8.8): " DNS < /dev/tty
+    manual)
+        echo "MOD: Manuel IP"
+        STATIC_IP="${2:-$CURRENT_IP}"
+        GATEWAY="${3:-$(ip route | grep default | awk '{print $3}')}"
+        DNS="${4:-8.8.8.8}"
+        ;;
+    interactive)
+        echo "MOD: İnteraktif"
+        echo "Ne yapmak istersiniz?"
+        echo "1) Mevcut DHCP IP'sini sabit IP yap (önerilen - kolay)"
+        echo "2) Manuel IP gir"
+        
+        # Terminal'den direkt oku
+        exec < /dev/tty
+        read -p "Seçiminiz (1 veya 2): " choice
+        
+        case $choice in
+            1)
+                STATIC_IP=$CURRENT_IP
+                GATEWAY=$(ip route | grep default | awk '{print $3}')
+                DNS=$(grep nameserver /etc/resolv.conf | awk '{print $2}' | head -n1)
+                ;;
+            2)
+                read -p "Sabit IP adresi (örn: 192.168.1.100): " STATIC_IP
+                read -p "Gateway (örn: 192.168.1.1): " GATEWAY
+                read -p "DNS sunucu (örn: 8.8.8.8): " DNS
+                ;;
+            *)
+                echo "Geçersiz seçim!"
+                exit 1
+                ;;
+        esac
         ;;
     *)
-        echo "Geçersiz seçim!"
+        echo "Hata: Geçersiz mod!"
+        echo ""
+        echo "Kullanım örnekleri:"
+        echo "  sudo bash $0 auto                                    # Otomatik (mevcut IP'yi sabit yap)"
+        echo "  sudo bash $0 interactive                             # İnteraktif mod"
+        echo "  sudo bash $0 manual 192.168.1.100 192.168.1.1 8.8.8.8  # Manuel IP"
         exit 1
         ;;
 esac
@@ -63,15 +103,20 @@ echo "  DNS: $DNS"
 echo "  Netmask: $NETMASK"
 echo
 
-read -p "Devam edilsin mi? (e/h): " confirm < /dev/tty
-if [ "$confirm" != "e" ]; then
-    echo "İptal edildi."
-    exit 0
+if [ "$MODE" = "interactive" ]; then
+    read -p "Devam edilsin mi? (e/h): " confirm
+    if [ "$confirm" != "e" ]; then
+        echo "İptal edildi."
+        exit 0
+    fi
+else
+    echo "5 saniye içinde devam edilecek... (Ctrl+C ile iptal)"
+    sleep 5
 fi
 
 # Yedek al
 echo "Mevcut yapılandırma yedekleniyor..."
-cp /etc/network/interfaces /etc/network/interfaces.backup.$(date +%Y%m%d_%H%M%S)
+cp /etc/network/interfaces /etc/network/interfaces.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true
 
 # Yeni yapılandırma dosyasını oluştur
 echo "Yeni yapılandırma yazılıyor..."
@@ -107,29 +152,27 @@ chattr +i /etc/resolv.conf 2>/dev/null || true
 echo
 echo "✓ Yapılandırma tamamlandı!"
 echo
-echo "Ağ servisini yeniden başlatmak için:"
-echo "  systemctl restart networking"
+
+# Ağ servisini yeniden başlat
+echo "Ağ servisi yeniden başlatılıyor..."
+systemctl restart networking 2>/dev/null || /etc/init.d/networking restart
+sleep 2
+
 echo
-echo "Veya sistemi yeniden başlatın:"
-echo "  reboot"
+echo "Yeni IP durumu:"
+ip addr show $INTERFACE | grep "inet " || echo "IP bilgisi alınamadı"
+
 echo
-read -p "Şimdi ağ servisini yeniden başlatalım mı? (e/h): " restart
-if [ "$restart" = "e" ]; then
-    echo "Ağ servisi yeniden başlatılıyor..."
-    systemctl restart networking
-    sleep 2
-    echo
-    echo "Yeni IP durumu:"
-    ip addr show $INTERFACE | grep "inet "
-    echo
-    echo "Bağlantı testi yapılıyor..."
-    if ping -c 2 8.8.8.8 > /dev/null 2>&1; then
-        echo "✓ İnternet bağlantısı çalışıyor!"
-    else
-        echo "⚠ İnternet bağlantısı kurulamadı. Yapılandırmayı kontrol edin."
-    fi
+echo "Bağlantı testi yapılıyor..."
+if ping -c 2 8.8.8.8 > /dev/null 2>&1; then
+    echo "✓ İnternet bağlantısı çalışıyor!"
+else
+    echo "⚠ İnternet bağlantısı kurulamadı. Yapılandırmayı kontrol edin."
+    echo "Eski yapılandırmaya dönmek için:"
+    echo "  ls -la /etc/network/interfaces.backup*"
+    echo "  mv /etc/network/interfaces.backup.XXXX /etc/network/interfaces"
+    echo "  systemctl restart networking"
 fi
 
 echo
-echo "Eski yapılandırma /etc/network/interfaces.backup* olarak yedeklendi."
-echo "Sorun olursa: mv /etc/network/interfaces.backup* /etc/network/interfaces"
+echo "Tamamlandı! SSH bağlantısı kesilirse yeni IP ile bağlanın: $STATIC_IP"
